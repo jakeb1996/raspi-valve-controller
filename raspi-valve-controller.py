@@ -14,12 +14,12 @@ import thread
 import urllib2
 import uuid
 import requests
-import RPi.GPIO as GPIO
-import Adafruit_Nokia_LCD as LCD
-import Adafruit_GPIO.SPI as SPI
-from PIL import Image
-from PIL import ImageDraw
-from PIL import ImageFont
+#import RPi.GPIO as GPIO
+#import Adafruit_Nokia_LCD as LCD
+#import Adafruit_GPIO.SPI as SPI
+#from PIL import Image
+#from PIL import ImageDraw
+#from PIL import ImageFont
 
 
 class Client(object):
@@ -153,6 +153,8 @@ class Client(object):
                 print '-- Processing schedule'
                 isSprinklerRunning = False
 
+                timeUntilEnding = None
+                timeUntilStarting = None
                 for schedule in self.mossbytePayload:
                     if 'startTime' in schedule and 'runTime' in schedule and 'months' in schedule and 'daysWeek' in schedule:
                         startTimeSplit = schedule['startTime'].split(':')
@@ -178,7 +180,13 @@ class Client(object):
                         # startTime ------- now ------------ endTime
                         if startTime < now and now < endTime:
                             isSprinklerRunning = True
-
+                            if timeUntilEnding == None or (endTime - now) > timeUntilEnding:
+                                timeUntilEnding = endTime - now
+                        else:
+                            if timeUntilStarting == None or (startTime - now) < timeUntilStarting:
+                                timeUntilStarting = startTime - now
+                print 'Next start: {}'.format(timeUntilEnding)              
+                print 'Remaining:  {}'.format(timeUntilStarting)
                 self.toggleSprinklerValve(isSprinklerRunning)
                         
     def toggleSprinklerValve(self, isSprinklerRunning):
