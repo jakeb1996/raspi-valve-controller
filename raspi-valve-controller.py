@@ -253,5 +253,5 @@ if __name__ == "__main__":
     try:
         client = Client("wss://mossbyte.com:8443", 5)
     except KeyboardInterrupt:  # When 'Ctrl+C' is pressed, the child program destroy() will be  executed.
-        client.destroy()
+        self.client.destroy()
     
