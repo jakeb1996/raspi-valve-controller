@@ -185,8 +185,9 @@ class Client(object):
                         else:
                             if timeUntilStarting == None or (startTime - now) < timeUntilStarting:
                                 timeUntilStarting = startTime - now
-                print 'Next start: {}'.format(timeUntilEnding)              
-                print 'Remaining:  {}'.format(timeUntilStarting)
+                                
+                print 'Remaining: {}'.format(str(timeUntilEnding).split(".")[0])             
+                print 'Next start:  {}'.format(str(timeUntilStarting).split(".")[0])
                 self.toggleSprinklerValve(isSprinklerRunning)
                         
     def toggleSprinklerValve(self, isSprinklerRunning):
