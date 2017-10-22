@@ -14,9 +14,13 @@ import thread
 import urllib2
 import uuid
 import requests
-#import RPi.GPIO as GPIO
-#import Adafruit_Nokia_LCD as LCD
-#import Adafruit_GPIO.SPI as SPI
+import RPi.GPIO as GPIO
+import Adafruit_Nokia_LCD as LCD
+import Adafruit_GPIO.SPI as SPI
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageFont
+
 
 class Client(object):
     def __init__(self, url, timeout):
@@ -30,69 +34,79 @@ class Client(object):
         
         self.isInitialised = False
         
-        self.isOnRaspi = False
-        self.valveTriggerPin = 0
+        self.isOnRaspi = True
+        self.valveTriggerPin = 3
         self.DC = 23
         self.RST = 24
         self.SPI_PORT = 0
         self.SPI_DEVICE = 0
-        
+        self.image = None
+        self.draw = None
         self.lastWasKeepAlive = False
         self.timezoneOffsetSeconds = 36000
         
         self.apiKey = 'a28061dc-3a9a-4549-9d6b-0b5354e0af99'
         self.readKey = None
         self.adminKey = None
-        
-        self.readDeviceID()
 
         self.isDestroying = False
         
+        if self.isOnRaspi:
+            self.setupGPIO()
+            # Hardware SPI usage:
+            self.screen = LCD.PCD8544(self.DC, self.RST, spi=SPI.SpiDev(self.SPI_PORT, self.SPI_DEVICE, max_speed_hz=4000000))
+            self.screen.clear()
+            self.screen.display()
+            
+            # Initialize library.
+            self.screen.begin(contrast=60)
+            self.writeScreen((10,10), 'Hello\nJosh')
+            time.sleep(5)
+	self.readDeviceID()
         if self.isInitialised == True:
             self.connect()
             PeriodicCallback(self.keep_alive, 30000, io_loop=self.ioloop).start()
             self.ioloop.start()
 
-        if self.isOnRaspi:
-            # Hardware SPI usage:
-            self.screen = LCD.PCD8544(self.DC, self.RST, spi=SPI.SpiDev(self.SPI_PORT, self.SPI_DEVICE, max_speed_hz=4000000))
-            self.screen.clear()
-            self.screen.display()
-
-            # Initialize library.
-            disp.begin(contrast=60)
-
     def destroy(self):
+        print '- Destroying...'
         self.isDestroying = True
         if isOnRaspi:
             GPIO.output(self.valveTriggerPin, GPIO.LOW)
             GPIO.cleanup()
 
-    def writeScreen(self, text, position, clear=True):
+    def writeScreen(self, inPosition, inText, clear=True):
         # position (x,y)
         if self.isOnRaspi:
+            if clear or self.image == None:
+                self.image = Image.new('1', (LCD.LCDWIDTH, LCD.LCDHEIGHT))
+                self.draw = ImageDraw.Draw(self.image)
+                self.draw.rectangle((0,0,LCD.LCDWIDTH,LCD.LCDHEIGHT), outline=255, fill=255)
             font = ImageFont.load_default()
-            if clear:
-                self.screen.clear()
-            draw.text(position, text, font=font)
+            self.draw.text(inPosition, str(inText), font=font)
+            self.screen.image(self.image)
             self.screen.display()
         
     @gen.coroutine
     def connect(self):
         print '\n- Attempting to establish websocket connection with mossByte...'
+        self.writeScreen((0,0), 'Conn...')
         try:
             self.ws = yield websocket_connect(self.url)
         except Exception, e:
             print '- Failed to connect'
+            self.writeScreen((0,0), 'neg ws connect')
         else:
             print '- Connected successfully'
+            self.writeScreen((0,0), 'pos ws connect')
             self.run()
 
     def setupGPIO(self):
-        if isOnRaspi:
-            GPIO.setmode(GPIO.BOARD)       # Numbers GPIOs by physical location
+        if self.isOnRaspi:
+	    print '- Setting up GPIO'
+	    GPIO.setmode(GPIO.BCM)       # Numbers GPIOs by physical location
             GPIO.setup(self.valveTriggerPin, GPIO.OUT)
-            GPIO.output(self.valveTriggerPin, GPIO.HIGH)
+            GPIO.output(self.valveTriggerPin, GPIO.LOW)
 
     @gen.coroutine
     def run(self):
@@ -103,6 +117,7 @@ class Client(object):
             msg = yield self.ws.read_message()
             if msg is None:
                 print '- Connection seems to have closed'
+		self.writeScreen((5,5), 'Conn closed')
                 self.ws = None
                 break
             else:
@@ -111,11 +126,13 @@ class Client(object):
                     jsonStruct = json.loads(msg)
                     if 'payload' in jsonStruct and 'mossbyte' in jsonStruct['payload']:
                         self.mossbytePayload = jsonStruct['payload']['mossbyte'][0]
+			self.writeScreen((5,5), self.adminKey)
                 else:
                     self.lastWasKeepAlive = False
 
     def keep_alive(self):
         print '- Sending heartbeat...'
+	self.writeScreen((5,5), 'Heartbeat...')
         if self.ws is None:
             self.connect()
         else:
@@ -125,10 +142,10 @@ class Client(object):
             self.lastWasKeepAlive = True
 
     def isSprinklerOn(self):
+        self.writeScreen((0,0), 'adminkey')
         if self.isDestroying == False:
             print '\n- Checking valve status'
-            threading.Timer(1, self.isSprinklerOn).start()        
-            #cronJson = '[{"id":"1507381764425","startTime":"20:45","runTime":"124","daysWeek":["0,1,2,3,4,5,6"],"months":["1,2,3,4,5,6,7,8,9,10,11,12"]},{"id":"1507381777070","startTime":"10:20","runTime":"125","daysWeek":["5"],"months":["1"]},{"id":"1507381956496","startTime":"10:20","runTime":"130","daysWeek":["5"],"months":["1"]},{"id":"1507382743948","startTime":"10:20","runTime":"150","daysWeek":["5"],"months":["1"]},{"id":"1507382857240","startTime":"10:20","runTime":"150","daysWeek":["5"],"months":["7"]},{"id":"1507383607832","startTime":"10:20","runTime":"150","daysWeek":["5"],"months":["7"]},{"id":"1507514478434","startTime":"18:30","runTime":"58","daysWeek":["1","3","5"],"months":["1","3","5","7","9","11"]},{"id":"1507514720515","startTime":"22:00","runTime":"120","daysWeek":["0","1","2","3","4","5","6"],"months":["1","2","3","4","5","6","7","8","9","10","11","12"]}]' 
+            threading.Timer(1, self.isSprinklerOn).start()  
 
             if self.mossbytePayload != None:
                 
@@ -181,6 +198,7 @@ class Client(object):
             adminKey = fileDeviceAdminKey.readline()
 
             if readKey == "" or adminKey == "":
+                self.writeScreen((0,0), 'Keys missing')
                 print '- Keys missing'
                 
                 readKey = str(uuid.uuid1())
@@ -201,11 +219,14 @@ class Client(object):
                     fileDeviceAdminKey.write(adminKey)
                     
                     print '- Initialisation complete'
+                    self.writeScreen((0,0), 'Init complete')
                 else:
                     print '- Failed to create mossByte'
+                    self.writeScreen((0,0), 'Failed on mossByte')
                     
             else: # !(readKey == "" or adminKey == "")
                 print '- Already initialised'
+                self.writeScreen((0,0), 'Already init')
 
             print '- Read: {}\n- Admin: {}\n'.format(readKey, adminKey)
             self.readKey = readKey
@@ -221,8 +242,10 @@ class Client(object):
                     self.mossbytePayload = None
                     
                 self.isInitialised = True
+                self.writeScreen((0,0), 'pos fetch')
             else:
                 print '- Failed to fetch schedule'
+                self.writeScreen((0,0), 'neg fetch')
                 self.isInitialised = False
 
                 
