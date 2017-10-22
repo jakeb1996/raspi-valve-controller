@@ -34,7 +34,7 @@ class Client(object):
         
         self.isInitialised = False
         
-        self.isOnRaspi = True
+        self.isOnRaspi = False
         self.valveTriggerPin = 3
         self.DC = 23
         self.RST = 24
@@ -62,7 +62,8 @@ class Client(object):
             self.screen.begin(contrast=60)
             self.writeScreen((10,10), 'Hello\nJosh')
             time.sleep(5)
-	self.readDeviceID()
+
+        self.readDeviceID()
         if self.isInitialised == True:
             self.connect()
             PeriodicCallback(self.keep_alive, 30000, io_loop=self.ioloop).start()
@@ -103,8 +104,8 @@ class Client(object):
 
     def setupGPIO(self):
         if self.isOnRaspi:
-	    print '- Setting up GPIO'
-	    GPIO.setmode(GPIO.BCM)       # Numbers GPIOs by physical location
+            print '- Setting up GPIO'
+            GPIO.setmode(GPIO.BCM)       # Numbers GPIOs by physical location
             GPIO.setup(self.valveTriggerPin, GPIO.OUT)
             GPIO.output(self.valveTriggerPin, GPIO.LOW)
 
@@ -117,7 +118,7 @@ class Client(object):
             msg = yield self.ws.read_message()
             if msg is None:
                 print '- Connection seems to have closed'
-		self.writeScreen((5,5), 'Conn closed')
+                self.writeScreen((5,5), 'Conn closed')
                 self.ws = None
                 break
             else:
@@ -126,13 +127,13 @@ class Client(object):
                     jsonStruct = json.loads(msg)
                     if 'payload' in jsonStruct and 'mossbyte' in jsonStruct['payload']:
                         self.mossbytePayload = jsonStruct['payload']['mossbyte'][0]
-			self.writeScreen((5,5), self.adminKey)
+                        self.writeScreen((5,5), self.adminKey)
                 else:
                     self.lastWasKeepAlive = False
 
     def keep_alive(self):
         print '- Sending heartbeat...'
-	self.writeScreen((5,5), 'Heartbeat...')
+        self.writeScreen((5,5), 'Heartbeat...')
         if self.ws is None:
             self.connect()
         else:
