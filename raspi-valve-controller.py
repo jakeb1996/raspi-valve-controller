@@ -14,12 +14,12 @@ import thread
 import urllib2
 import uuid
 import requests
-#import RPi.GPIO as GPIO
-#import Adafruit_Nokia_LCD as LCD
-#import Adafruit_GPIO.SPI as SPI
-#from PIL import Image
-#from PIL import ImageDraw
-#from PIL import ImageFont
+import RPi.GPIO as GPIO
+import Adafruit_Nokia_LCD as LCD
+import Adafruit_GPIO.SPI as SPI
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageFont
 
 
 class Client(object):
@@ -33,8 +33,9 @@ class Client(object):
         self.screen = None
         
         self.isInitialised = False
-        
-        self.isOnRaspi = False
+        self.isSocketAlive = False
+
+        self.isOnRaspi = True
         self.valveTriggerPin = 3
         self.DC = 23
         self.RST = 24
@@ -44,7 +45,8 @@ class Client(object):
         self.draw = None
         self.lastWasKeepAlive = False
         self.timezoneOffsetSeconds = 36000
-        
+        self.timeUntilEnding = None
+        self.timeUntilStarting = None
         self.apiKey = 'a28061dc-3a9a-4549-9d6b-0b5354e0af99'
         self.readKey = None
         self.adminKey = None
@@ -60,7 +62,10 @@ class Client(object):
             
             # Initialize library.
             self.screen.begin(contrast=60)
-            self.writeScreen((10,10), 'Hello\nJosh')
+            pic = Image.open('/home/pi/raspi-valve-controller/jgm.bmp').convert('1')
+            self.screen.image(pic)
+            self.screen.display()
+            #self.writeScreen((10,10), 'Hello\nJosh')
             time.sleep(5)
 
         self.readDeviceID()
@@ -91,15 +96,16 @@ class Client(object):
     @gen.coroutine
     def connect(self):
         print '\n- Attempting to establish websocket connection with mossByte...'
-        self.writeScreen((0,0), 'Conn...')
+        self.writeScreen((0,0), 'Connecting...')
         try:
             self.ws = yield websocket_connect(self.url)
         except Exception, e:
             print '- Failed to connect'
-            self.writeScreen((0,0), 'neg ws connect')
+            self.writeScreen((0,0), 'Failed conn')
         else:
             print '- Connected successfully'
-            self.writeScreen((0,0), 'pos ws connect')
+            self.isSocketAlive = True
+            self.writeScreen((0,0), 'Connected')
             self.run()
 
     def setupGPIO(self):
@@ -118,7 +124,8 @@ class Client(object):
             msg = yield self.ws.read_message()
             if msg is None:
                 print '- Connection seems to have closed'
-                self.writeScreen((5,5), 'Conn closed')
+                self.isSocketAlive = False
+                self.writeScreen((0,0), 'Connection\nclosed.\nReconnecting')
                 self.ws = None
                 break
             else:
@@ -133,7 +140,7 @@ class Client(object):
 
     def keep_alive(self):
         print '- Sending heartbeat...'
-        self.writeScreen((5,5), 'Heartbeat...')
+        self.writeScreen((0,0), 'Heartbeat...')
         if self.ws is None:
             self.connect()
         else:
@@ -143,7 +150,7 @@ class Client(object):
             self.lastWasKeepAlive = True
 
     def isSprinklerOn(self):
-        self.writeScreen((0,0), 'adminkey')
+        #self.writeScreen((0,0), 'adminkey')
         if self.isDestroying == False:
             print '\n- Checking valve status'
             threading.Timer(1, self.isSprinklerOn).start()  
@@ -153,8 +160,7 @@ class Client(object):
                 print '-- Processing schedule'
                 isSprinklerRunning = False
 
-                timeUntilEnding = None
-                timeUntilStarting = None
+
                 for schedule in self.mossbytePayload:
                     if 'startTime' in schedule and 'runTime' in schedule and 'months' in schedule and 'daysWeek' in schedule:
                         startTimeSplit = schedule['startTime'].split(':')
@@ -180,16 +186,32 @@ class Client(object):
                         # startTime ------- now ------------ endTime
                         if startTime < now and now < endTime:
                             isSprinklerRunning = True
-                            if timeUntilEnding == None or (endTime - now) > timeUntilEnding:
-                                timeUntilEnding = endTime - now
+                            if self.timeUntilEnding == None or (endTime - now) < self.timeUntilEnding:
+                                self.timeUntilEnding = endTime - now
                         else:
-                            if timeUntilStarting == None or (startTime - now) < timeUntilStarting:
-                                timeUntilStarting = startTime - now
-                                
-                print 'Remaining: {}'.format(str(timeUntilEnding).split(".")[0])             
-                print 'Next start:  {}'.format(str(timeUntilStarting).split(".")[0])
+                            if self.timeUntilStarting == None or (startTime - now) < self.timeUntilStarting:
+                                self.timeUntilStarting = startTime - now
+
+                self.writeMainScreen() 
+                #print 'Remaining: {}'.format(str(timeUntilEnding).split(".")[0])             
+                #print 'Next start:  {}'.format(str(timeUntilStarting).split(".")[0])
                 self.toggleSprinklerValve(isSprinklerRunning)
-                        
+    
+
+    def writeMainScreen(self):
+        nowSec = time.mktime(datetime.datetime.now().timetuple())
+        deviceIdString = '{}Device ID: {}'.format(' '*13, self.adminKey)
+        self.writeScreen((0,0), deviceIdString[int(0 + nowSec % len(deviceIdString)):int(14 + nowSec % len(deviceIdString))])
+
+        if self.isSocketAlive:
+                self.writeScreen((0,10), 'Connected', False)
+        else:
+            self.writeScreen((0,0), 'No connection', False)
+
+        self.writeScreen((0,20), 'End:  {}'.format(str(self.timeUntilEnding).split(".")[0]), False)
+        self.writeScreen((0,30), 'Next: {}'.format(str(self.timeUntilStarting).split(".")[0]), False)          
+
+            
     def toggleSprinklerValve(self, isSprinklerRunning):
         if (isSprinklerRunning):
             print '-- Sprinkler valve is OPENED'
@@ -236,7 +258,7 @@ class Client(object):
                     
             else: # !(readKey == "" or adminKey == "")
                 print '- Already initialised'
-                self.writeScreen((0,0), 'Already init')
+                self.writeScreen((0,0), 'Already initialised')
 
             print '- Read: {}\n- Admin: {}\n'.format(readKey, adminKey)
             self.readKey = readKey
@@ -263,5 +285,5 @@ if __name__ == "__main__":
     try:
         client = Client("wss://mossbyte.com:8443", 5)
     except KeyboardInterrupt:  # When 'Ctrl+C' is pressed, the child program destroy() will be  executed.
-        self.client.destroy()
+        client.destroy()
     
