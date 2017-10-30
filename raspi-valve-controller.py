@@ -36,7 +36,7 @@ class Client(object):
         self.isSocketAlive = False
 
         self.isOnRaspi = True
-        self.valveTriggerPin = 3
+        self.valveTriggerPin = 17
         self.DC = 23
         self.RST = 24
         self.SPI_PORT = 0
@@ -134,7 +134,8 @@ class Client(object):
                     jsonStruct = json.loads(msg)
                     if 'payload' in jsonStruct and 'mossbyte' in jsonStruct['payload']:
                         self.mossbytePayload = jsonStruct['payload']['mossbyte'][0]
-                        self.writeScreen((5,5), self.adminKey)
+                        self.timeUntilStarting = None
+                        self.timeUntilEnding = None
                 else:
                     self.lastWasKeepAlive = False
 
@@ -159,7 +160,6 @@ class Client(object):
                 
                 print '-- Processing schedule'
                 isSprinklerRunning = False
-
 
                 for schedule in self.mossbytePayload:
                     if 'startTime' in schedule and 'runTime' in schedule and 'months' in schedule and 'daysWeek' in schedule:
@@ -192,26 +192,48 @@ class Client(object):
                             if self.timeUntilStarting == None or (startTime - now) < self.timeUntilStarting:
                                 self.timeUntilStarting = startTime - now
 
-                self.writeMainScreen() 
-                #print 'Remaining: {}'.format(str(timeUntilEnding).split(".")[0])             
-                #print 'Next start:  {}'.format(str(timeUntilStarting).split(".")[0])
+                if len(self.mossbytePayload) == 1:
+                    startTime = cron.get_next()
+                    startTime = datetime.datetime.fromtimestamp(startTime) - datetime.timedelta(seconds=self.timezoneOffsetSeconds)
+                    self.timeUntilStarting = startTime - now
+
+                if isSprinklerRunning == False:
+                    self.timeUntilEnding = None
+
+                self.writeMainScreen(isSprinklerRunning) 
+
                 self.toggleSprinklerValve(isSprinklerRunning)
     
 
-    def writeMainScreen(self):
+    def writeMainScreen(self, isSprinklerRunning):
         nowSec = time.mktime(datetime.datetime.now().timetuple())
         deviceIdString = '{}Device ID: {}'.format(' '*13, self.adminKey)
         self.writeScreen((0,0), deviceIdString[int(0 + nowSec % len(deviceIdString)):int(14 + nowSec % len(deviceIdString))])
 
         if self.isSocketAlive:
-                self.writeScreen((0,10), 'Connected', False)
+            self.writeScreen((0,10), 'Connected', False)
         else:
             self.writeScreen((0,0), 'No connection', False)
 
-        self.writeScreen((0,20), 'End:  {}'.format(str(self.timeUntilEnding).split(".")[0]), False)
-        self.writeScreen((0,30), 'Next: {}'.format(str(self.timeUntilStarting).split(".")[0]), False)          
+        if self.timeUntilEnding != None:
+             strEnd = self.formatSecsToHMS(self.timeUntilEnding.total_seconds())        
+        else:
+             strEnd = None
 
-            
+        if self.timeUntilStarting != None:
+             strStart = self.formatSecsToHMS(self.timeUntilStarting.total_seconds())
+        else:
+             strStart = None
+
+        self.writeScreen((0,20), 'End:  {}'.format(strEnd), False)
+        self.writeScreen((0,30), 'Next: {}'.format(strStart), False)  
+        if isSprinklerRunning:
+            self.writeScreen((0,40), '.', False)     
+
+    def formatSecsToHMS(self, seconds):
+        seconds = int(seconds)
+        return '{:02}:{:02}:{:02}'.format(seconds // (60 * 60), seconds % (60 * 60) // 60, seconds % (60))
+      
     def toggleSprinklerValve(self, isSprinklerRunning):
         if (isSprinklerRunning):
             print '-- Sprinkler valve is OPENED'
