@@ -162,6 +162,8 @@ class Client(object):
                 print '-- Processing schedule'
                 isSprinklerRunning = False
 
+                self.timeUntilStarting = None
+                self.timeUntilEnding = None
                 for schedule in self.mossbytePayload:
                     if 'startTime' in schedule and 'runTime' in schedule and 'months' in schedule and 'daysWeek' in schedule:
                         startTimeSplit = schedule['startTime'].split(':')
@@ -187,22 +189,26 @@ class Client(object):
                         # startTime ------- now ------------ endTime
                         if startTime < now and now < endTime:
                             isSprinklerRunning = True
-                            if self.timeUntilEnding == None or (endTime - now) < self.timeUntilEnding:
+                            if self.timeUntilEnding == None or (endTime - now) > self.timeUntilEnding:
                                 self.timeUntilEnding = endTime - now
                         else:
                             if self.timeUntilStarting == None or (startTime - now) < self.timeUntilStarting:
                                 self.timeUntilStarting = startTime - now
 
+                # there is only one schedule, get the time it starts next
                 if len(self.mossbytePayload) == 1:
                     startTime = cron.get_next()
                     startTime = datetime.datetime.fromtimestamp(startTime) - datetime.timedelta(seconds=self.timezoneOffsetSeconds)
                     self.timeUntilStarting = startTime - now
 
+                # sprinkler is not running, set end time to None
                 if isSprinklerRunning == False:
                     self.timeUntilEnding = None
 
+                # update display
                 self.writeMainScreen(isSprinklerRunning) 
 
+                # toggle valve
                 self.toggleSprinklerValve(isSprinklerRunning)
     
 
