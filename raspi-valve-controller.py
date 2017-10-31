@@ -97,6 +97,7 @@ class Client(object):
     def connect(self):
         print '\n- Attempting to establish websocket connection with mossByte...'
         self.writeScreen((0,0), 'Connecting...')
+        self.isSocketAlive = False
         try:
             self.ws = yield websocket_connect(self.url)
         except Exception, e:
@@ -213,7 +214,7 @@ class Client(object):
         if self.isSocketAlive:
             self.writeScreen((0,10), 'Connected', False)
         else:
-            self.writeScreen((0,0), 'No connection', False)
+            self.writeScreen((0,10), 'No connection', False)
 
         if self.timeUntilEnding != None:
              strEnd = self.formatSecsToHMS(self.timeUntilEnding.total_seconds())        
