@@ -244,6 +244,28 @@ class Client(object):
             if self.isOnRaspi:
                 GPIO.output(self.valveTriggerPin, GPIO.LOW)
 
+    def createMossByte(self):
+        readKey = str(uuid.uuid1())
+        adminKey = str(uuid.uuid1())
+        
+        print '- Generated keys\nRead: {}\nAdmin: {}'.format(readKey, adminKey)
+        
+        print '- Requesting new mossByte object'
+        
+        requestPayload = {"object":[{"jgm":"initialise"}],"keys":{"read":[{"key":readKey,"label":"jgm-read"}],"admin":[{"key":adminKey,"label":"jgm-admin"}]}}
+        connected = False
+        while connected == False:
+            try:
+                req = requests.post('https://mossbyte.com/api/v1/{}'.format(self.apiKey), json=requestPayload)        
+                connected = True
+            except requests.exceptions.ConnectionError as e:
+                time.sleep(5)
+        if req.status_code == 200:
+            return adminKey, readKey
+        else:
+            print '- Failed to create mossByte'
+            self.writeScreen((0,0), 'Failed on mossByte')
+        
     def readDeviceID(self):
         with open('read.key', 'a+') as fileDeviceReadKey, open('admin.key', 'a+') as fileDeviceAdminKey:
             fileDeviceReadKey.seek(0)
@@ -255,52 +277,71 @@ class Client(object):
                 self.writeScreen((0,0), 'Keys missing')
                 print '- Keys missing'
                 
-                readKey = str(uuid.uuid1())
-                adminKey = str(uuid.uuid1())
-                
-                print '- Generated keys\nRead: {}\nAdmin: {}'.format(readKey, adminKey)
-                
-                print '- Requesting new mossByte object'
-                
-                requestPayload = {"object":[{"jgm":"initialise"}],"keys":{"read":[{"key":readKey,"label":"jgm-read"}],"admin":[{"key":adminKey,"label":"jgm-admin"}]}}
-                req = requests.post('https://mossbyte.com/api/v1/{}'.format(self.apiKey), json=requestPayload)        
+                adminKey, readKey = self.createMossByte()
 
-                if req.status_code == 200:
-                    print '- Writing keys to file'
-                    fileDeviceReadKey.seek(0)
-                    fileDeviceReadKey.write(readKey)
-                    fileDeviceAdminKey.seek(0)
-                    fileDeviceAdminKey.write(adminKey)
+                print '- Writing keys to file'
+                fileDeviceReadKey.seek(0)
+                fileDeviceReadKey.truncate()
+                fileDeviceReadKey.write(readKey)
+                
+                fileDeviceAdminKey.seek(0)
+                fileDeviceAdminKey.truncate()
+                fileDeviceAdminKey.write(adminKey)
                     
-                    print '- Initialisation complete'
-                    self.writeScreen((0,0), 'Init complete')
-                else:
-                    print '- Failed to create mossByte'
-                    self.writeScreen((0,0), 'Failed on mossByte')
+                print '- Initialisation complete'
+                self.writeScreen((0,0), 'Init complete')
+                
                     
             else: # !(readKey == "" or adminKey == "")
                 print '- Already initialised'
-                self.writeScreen((0,0), 'Already initialised')
+                self.writeScreen((0,0), 'Already\ninitialised')
 
             print '- Read: {}\n- Admin: {}\n'.format(readKey, adminKey)
             self.readKey = readKey
             self.adminKey = adminKey
             
-            print '- Fetching schedule'
-            req = requests.get('https://mossbyte.com/api/v1/{}'.format(self.readKey))
-            if req.status_code == 200:
-                jsonStruct = json.loads(req.content)
-                if 'data' in jsonStruct and 'mossByte' in jsonStruct['data'] and 'object' in jsonStruct['data']['mossByte']:
-                    self.mossbytePayload = jsonStruct['data']['mossByte']['object'][0]
+            verifiedReadKey = False
+            createMossbyteAttemptMax = 3
+            while verifiedReadKey == False and createMossbyteAttemptMax > 0:
+                connected = False
+                while connected == False:
+                    try:
+                        print '- Fetching schedule'
+                        self.writeScreen((0,0), 'Fetching\nschedule')
+                        time.sleep(0.5)
+                        req = requests.get('https://mossbyte.com/api/v1/{}'.format(self.readKey))
+                        connected = True
+                        verifiedReadKey = True
+                    except requests.exceptions.ConnectionError as e:
+                        self.writeScreen((0,0), 'ConnErr\nTrying again')
+                        time.sleep(5)
+
+                if req.status_code == 200:
+                    jsonStruct = json.loads(req.content)
+                    if 'data' in jsonStruct and 'mossByte' in jsonStruct['data'] and 'object' in jsonStruct['data']['mossByte']:
+                        self.mossbytePayload = jsonStruct['data']['mossByte']['object'][0]
+                    else:
+                        self.mossbytePayload = None
+                        
+                    self.isInitialised = True
+                    self.writeScreen((0,0), 'pos fetch')
                 else:
-                    self.mossbytePayload = None
+                    self.writeScreen((0,0), req.status_code)
+                    time.sleep(3)
+                    print '- Failed to fetch schedule'
+                    print '- Creating new set of keys'
+                    adminKey, readKey = self.createMossByte()
+                    createMossbyteAttemptMax = createMossbyteAttemptMax - 1
+
+                    print '- Writing keys to file'
+                    fileDeviceReadKey.seek(0)
+                    fileDeviceReadKey.truncate()
+                    fileDeviceReadKey.write(readKey)
                     
-                self.isInitialised = True
-                self.writeScreen((0,0), 'pos fetch')
-            else:
-                print '- Failed to fetch schedule'
-                self.writeScreen((0,0), 'neg fetch')
-                self.isInitialised = False
+                    fileDeviceAdminKey.seek(0)
+                    fileDeviceAdminKey.truncate()
+                    fileDeviceAdminKey.write(adminKey)
+                    verifiedReadKey = False
 
                 
 if __name__ == "__main__":
