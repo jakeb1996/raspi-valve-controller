@@ -118,7 +118,7 @@ class Client(object):
 
     @gen.coroutine
     def run(self):
-        self.ws.write_message('{"command":"listen","payload":{"key":"'+self.readKey+'"}}')
+        self.ws.write_message('{"command":"listener.create","payload":{"key":"'+self.readKey+'"}}')
         self.isSprinklerOn()
         while True:
             print '- Listening for messages'
