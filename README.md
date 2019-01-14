@@ -1,12 +1,9 @@
 # Raspi Valve Controller
 A method for controlling Raspberry Pi GPIO pins via websockets.
 
-## Use Case
-This script was primarily written for the integration of the Raspberry Pi with the JoshGardenOnMandy.com project. 
-
 ## Dependencies
 - Please review the Python import headers for dependencies.
-- [JoshsGardenOnMandy.com Control Panel](https://github.com/jakeb1996/joshsgardenonmandy)
+- [Raspi-Valve Control Panel](https://github.com/jakeb1996/raspi-valve-remote-control)
 
 ## Software & Hardware Requirements
 - Raspberry Pi 3B & Micro SD Card
